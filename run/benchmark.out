@@ -1,0 +1,6 @@
+PARSEC Benchmark Suite Version 3.0-beta-20150206
+read 16384 points
+
+real	0m11,054s
+user	0m9,104s
+sys	0m0,154s

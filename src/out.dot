@@ -1,0 +1,14 @@
+digraph {
+	graph [fontname=Arial, nodesep=0.125, ranksep=0.25];
+	node [fontcolor=white, fontname=Arial, height=0, shape=box, style=filled, width=0];
+	edge [fontname=Arial];
+	1 [color="#ff0200", fontcolor="#ffffff", fontsize="10.00", label="pkmedian(Points*, long, long, long*, int, parsec_barrier_t*)\n99.85%\n(0.08%)\n6×"];
+	1 -> 4 [arrowsize="0.99", color="#fc1300", fontcolor="#fc1300", fontsize="10.00", label="98.19%\n43×", labeldistance="3.93", penwidth="3.93"];
+	1 -> 5 [arrowsize="0.35", color="#0d1375", fontcolor="#0d1375", fontsize="10.00", label="1.58%\n29×", labeldistance="0.50", penwidth="0.50"];
+	2 [color="#ff0200", fontcolor="#ffffff", fontsize="10.00", label="localSearchSub(void*)\n99.85%\n(0.00%)"];
+	2 -> 1 [arrowsize="1.00", color="#ff0200", fontcolor="#ff0200", fontsize="10.00", label="99.85%\n6×", labeldistance="3.99", penwidth="3.99"];
+	3 [color="#fc1300", fontcolor="#ffffff", fontsize="10.00", label="pgain(long, Points*, double, long*, int, parsec_barrier_t*)\n98.19%\n(98.19%)\n8771×"];
+	4 [color="#fc1300", fontcolor="#ffffff", fontsize="10.00", label="pFL(Points*, int*, int, float, long*, double, long, float, int, parsec_barrier_t*)\n98.19%\n(0.00%)\n43×"];
+	4 -> 3 [arrowsize="0.99", color="#fc1300", fontcolor="#fc1300", fontsize="10.00", label="98.19%\n8771×", labeldistance="3.93", penwidth="3.93"];
+	5 [color="#0d1375", fontcolor="#ffffff", fontsize="10.00", label="pspeedy(Points*, float, long*, int, parsec_barrier_t*)\n1.58%\n(1.58%)\n29×"];
+}
