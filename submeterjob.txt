@@ -1,0 +1,7 @@
+/submeter job
+
+sbatch streamcluster.sh
+
+squeue
+
+scancel
