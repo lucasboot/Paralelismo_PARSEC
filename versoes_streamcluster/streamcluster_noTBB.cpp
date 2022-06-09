@@ -311,7 +311,8 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
     Each thread has its own copy of the *lower* fields as an array.
     We first build a table to index the positions of the *lower* fields. 
   */
-
+#pragma omp parallel
+{
 	int count = 0;
     int i;
     #pragma omp for private(i)
@@ -321,17 +322,22 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 			center_table[i] = count++;
 		}
 	}
+#pragma omp single
 	work_mem[pid * stride] = count;
 
 #ifdef ENABLE_THREADS
 	#pragma omp barrier
 #endif
-    
+
+#pragma omp single
 	if (pid == 0) {
 		int accum = 0;
-		for (int p = 0; p < nproc; p++) {
+		int p;
+	#pragma omp for private(p, stride) shared(accum)
+		for ( p= 0; p < nproc; p++) {
 			int tmp = (int)work_mem[p * stride];
 			work_mem[p * stride] = accum;
+			#pragma omp atomic
 			accum += tmp;
 		}
 	}
@@ -340,26 +346,38 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 	#pragma omp barrier
 #endif
 
+	#pragma omp for private(i, pid, stride)
 	for (int i = k1; i < k2; i++) {
 		if (is_center[i]) {
+			#pragma critical
 			center_table[i] += (int)work_mem[pid * stride];
 		}
 	}
 
 	//now we finish building the table. clear the working memory.
-	memset(switch_membership + k1, 0, (k2 - k1) * sizeof(bool));
-	memset(work_mem + pid * stride, 0, stride * sizeof(double));
-	if (pid == 0) memset(work_mem + nproc * stride, 0, stride * sizeof(double));
+	#pragma omp sections
+	{
+		#pragma omp section
+			memset(switch_membership + k1, 0, (k2 - k1) * sizeof(bool));
+
+		#pragma omp section
+			memset(work_mem + pid * stride, 0, stride * sizeof(double));
+		#pragma omp section {
+			if (pid == 0) memset(work_mem + nproc * stride, 0, stride * sizeof(double));
+		}
+	}
 
 #ifdef ENABLE_THREADS
 	#pragma omp barrier
 #endif
+	#pragma omp single {
+		//my *lower* fields
+		double* lower = &work_mem[pid * stride];
+		//global *lower* fields
+		double* gl_lower = &work_mem[nproc * stride];
+	}
 
-	//my *lower* fields
-	double* lower = &work_mem[pid * stride];
-	//global *lower* fields
-	double* gl_lower = &work_mem[nproc * stride];
-
+    #pragma omp for private(i, x_cost, current_cost)
 	for (i = k1; i < k2; i++) {
 		float x_cost = dist(points->p[i], points->p[x], points->dim) * points->p[i].weight;
 		float current_cost = points->p[i].cost;
@@ -370,6 +388,7 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 			// or else dist(p[i], p[x]) would be 0)
 
 			switch_membership[i] = 1;
+			#pragma omp critical
 			cost_of_opening_x += x_cost - current_cost;
 
 		} else {
@@ -381,6 +400,7 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 			// would save z by closing; now we have to subtract from the savings
 			// the extra cost of reassigning that median and its members
 			int assign = points->p[i].assign;
+			#pragma omp critical
 			lower[center_table[assign]] += current_cost - x_cost;
 		}
 	}
@@ -391,34 +411,41 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 
 	// at this time, we can calculate the cost of opening a center
 	// at x; if it is negative, we'll go through with opening it
-
+	double low;
+	#pragma omp for private(i, low)
 	for (int i = k1; i < k2; i++) {
 		if (is_center[i]) {
-			double low = z;
+			low = z;
 			//aggregate from all threads
 			for (int p = 0; p < nproc; p++) {
 				low += work_mem[center_table[i] + p * stride];
 			}
+			#pragma omp critical
 			gl_lower[center_table[i]] = low;
 			if (low > 0) {
 				// i is a median, and
 				// if we were to open x (which we still may not) we'd close i
 
 				// note, we'll ignore the following quantity unless we do open x
+				#pragma omp atomic
 				++number_of_centers_to_close;
+				#pragma omp critical
 				cost_of_opening_x -= low;
 			}
 		}
 	}
-	//use the rest of working memory to store the following
+	#pragma omp sections{
+	//use the rest of working memory to store the following]
+	#pragma omp section
 	work_mem[pid * stride + K] = number_of_centers_to_close;
+	#pragma omp section
 	work_mem[pid * stride + K + 1] = cost_of_opening_x;
+	}
 
 #ifdef ENABLE_THREADS
 	#pragma omp barrier
 #endif
 	//  printf("thread %d cost complete\n",pid);
-
 	if (pid == 0) {
 		gl_cost_of_opening_x = z;
 		//aggregate
@@ -427,6 +454,7 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 			gl_cost_of_opening_x += work_mem[p * stride + K + 1];
 		}
 	}
+	
 #ifdef ENABLE_THREADS
 	#pragma omp barrier
 #endif
@@ -435,6 +463,7 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 
 	if (gl_cost_of_opening_x < 0) {
 		//  we'd save money by opening x; we'll do it
+		#pragma omp for private(i, close_center)
 		for (int i = k1; i < k2; i++) {
 			bool close_center = gl_lower[center_table[points->p[i].assign]] > 0;
 			if (switch_membership[i] || close_center) {
@@ -445,7 +474,8 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 				points->p[i].assign = x;
 			}
 		}
-		for (int i = k1; i < k2; i++) {
+		#pragma omp for private(i)
+		for (i = k1; i < k2; i++) {
 			if (is_center[i] && gl_lower[center_table[i]] > 0) {
 				is_center[i] = false;
 			}
@@ -464,6 +494,7 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 #ifdef ENABLE_THREADS
 	#pragma omp barrier
 #endif
+} //parallel
 	if (pid == 0) {
 		free(work_mem);
 		//    free(is_center);
