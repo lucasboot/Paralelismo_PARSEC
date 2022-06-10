@@ -322,14 +322,12 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 			center_table[i] = count++;
 		}
 	}
-#pragma omp single
 	work_mem[pid * stride] = count;
 
 #ifdef ENABLE_THREADS
 	#pragma omp barrier
 #endif
 
-#pragma omp single
 	if (pid == 0) {
 		int accum = 0;
 		int p;
@@ -362,20 +360,17 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 
 		#pragma omp section
 			memset(work_mem + pid * stride, 0, stride * sizeof(double));
-		#pragma omp section {
-			if (pid == 0) memset(work_mem + nproc * stride, 0, stride * sizeof(double));
-		}
 	}
-
+	if (pid == 0) memset(work_mem + nproc * stride, 0, stride * sizeof(double));
 #ifdef ENABLE_THREADS
 	#pragma omp barrier
 #endif
-	#pragma omp single {
+	
 		//my *lower* fields
-		double* lower = &work_mem[pid * stride];
+	double* lower = &work_mem[pid * stride];
 		//global *lower* fields
-		double* gl_lower = &work_mem[nproc * stride];
-	}
+	double* gl_lower = &work_mem[nproc * stride];
+	
 
     #pragma omp for private(i, x_cost, current_cost)
 	for (i = k1; i < k2; i++) {
@@ -417,7 +412,9 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 		if (is_center[i]) {
 			low = z;
 			//aggregate from all threads
+			#pragma omp for private(p) shared(stride)
 			for (int p = 0; p < nproc; p++) {
+				#pragma omp critical
 				low += work_mem[center_table[i] + p * stride];
 			}
 			#pragma omp critical
@@ -434,13 +431,10 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 			}
 		}
 	}
-	#pragma omp sections{
-	//use the rest of working memory to store the following]
-	#pragma omp section
+	
 	work_mem[pid * stride + K] = number_of_centers_to_close;
-	#pragma omp section
 	work_mem[pid * stride + K + 1] = cost_of_opening_x;
-	}
+	
 
 #ifdef ENABLE_THREADS
 	#pragma omp barrier
@@ -449,9 +443,12 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 	if (pid == 0) {
 		gl_cost_of_opening_x = z;
 		//aggregate
+	#pragma omp for private(p) shared(stride)
 		for (int p = 0; p < nproc; p++) {
-			gl_number_of_centers_to_close += (int)work_mem[p * stride + K];
-			gl_cost_of_opening_x += work_mem[p * stride + K + 1];
+			#pragma omp critical {
+				gl_number_of_centers_to_close += (int)work_mem[p * stride + K];
+				gl_cost_of_opening_x += work_mem[p * stride + K + 1];
+			}
 		}
 	}
 	
@@ -1094,6 +1091,7 @@ int main(int argc, char** argv) {
 	strcpy(infilename, argv[7]);
 	strcpy(outfilename, argv[8]);
 	nproc = atoi(argv[9]);
+	omp_set_num_threads(nproc);
 
 	srand48(SEED);
 	PStream* stream;
