@@ -460,9 +460,10 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 
 	if (gl_cost_of_opening_x < 0) {
 		//  we'd save money by opening x; we'll do it
+		bool close_center;
 		#pragma omp for private(i, close_center)
 		for (int i = k1; i < k2; i++) {
-			bool close_center = gl_lower[center_table[points->p[i].assign]] > 0;
+			close_center = gl_lower[center_table[points->p[i].assign]] > 0;
 			if (switch_membership[i] || close_center) {
 				// Either i's median (which may be i itself) is closing,
 				// or i is closer to x than to its current median
@@ -675,12 +676,12 @@ float pkmedian(Points* points, long kmin, long kmax, long* kfinal,
 	}
 
 	if (pid == 0) shuffle(points);
-	cost = pspeedy(points, z, &k, pid, barrier);
+	cost = pspeedy(points, z, &k, pid);
 
 	i = 0;
 	/* give speedy SP chances to get at least kmin/2 facilities */
 	while ((k < kmin) && (i < SP)) {
-		cost = pspeedy(points, z, &k, pid, barrier);
+		cost = pspeedy(points, z, &k, pid);
 		i++;
 	}
 
@@ -692,7 +693,7 @@ float pkmedian(Points* points, long kmin, long kmax, long* kfinal,
 			i = 0;
 		}
 		if (pid == 0) shuffle(points);
-		cost = pspeedy(points, z, &k, pid, barrier);
+		cost = pspeedy(points, z, &k, pid);
 		i++;
 	}
 
