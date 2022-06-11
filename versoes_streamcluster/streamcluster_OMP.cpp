@@ -331,7 +331,7 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 	if (pid == 0) {
 		int accum = 0;
 		int p;
-	#pragma omp for private(p, stride) shared(accum)
+	#pragma omp for private(p, stride) 
 		for ( p= 0; p < nproc; p++) {
 			int tmp = (int)work_mem[p * stride];
 			work_mem[p * stride] = accum;
@@ -347,7 +347,7 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 	#pragma omp for private(i, pid, stride)
 	for (int i = k1; i < k2; i++) {
 		if (is_center[i]) {
-			#pragma critical
+			#pragma omp critical
 			center_table[i] += (int)work_mem[pid * stride];
 		}
 	}
@@ -371,11 +371,12 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 		//global *lower* fields
 	double* gl_lower = &work_mem[nproc * stride];
 	
-
+	float x_cost;
+	float current_cost;
     #pragma omp for private(i, x_cost, current_cost)
 	for (i = k1; i < k2; i++) {
-		float x_cost = dist(points->p[i], points->p[x], points->dim) * points->p[i].weight;
-		float current_cost = points->p[i].cost;
+		x_cost = dist(points->p[i], points->p[x], points->dim) * points->p[i].weight;
+		current_cost = points->p[i].cost;
 
 		if (x_cost < current_cost) {
 			// point i would save cost just by switching to x
@@ -412,9 +413,8 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 		if (is_center[i]) {
 			low = z;
 			//aggregate from all threads
-			#pragma omp for private(p) shared(stride)
-			for (int p = 0; p < nproc; p++) {
-				#pragma omp critical
+			int p;
+			for ( p= 0; p < nproc; p++) {
 				low += work_mem[center_table[i] + p * stride];
 			}
 			#pragma omp critical
@@ -443,12 +443,12 @@ double pgain(long x, Points* points, double z, long int* numcenters, int pid, pt
 	if (pid == 0) {
 		gl_cost_of_opening_x = z;
 		//aggregate
-	#pragma omp for private(p) shared(stride)
-		for (int p = 0; p < nproc; p++) {
-			#pragma omp critical {
+		int p ;
+	#pragma omp for private(p) 
+		for (p= 0; p < nproc; p++) {
 				gl_number_of_centers_to_close += (int)work_mem[p * stride + K];
 				gl_cost_of_opening_x += work_mem[p * stride + K + 1];
-			}
+			
 		}
 	}
 	
