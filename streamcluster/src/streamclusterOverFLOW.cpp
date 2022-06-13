@@ -172,262 +172,187 @@ float pspeedy(Points *points, float z, long *kcenter)
 	return (totalcost);
 }
 
-double pgain(long x, Points *points, double z, long int *numcenters)
+double pgain ( long x, Points *points, double z, long int *numcenters )
 {
-	static double gl_cost_of_opening_x;
-	int pid;
-	long bsize;
-	long k1;
-	long k2;
-	int stride;
-	static double *work_mem;
-	int count = 0;
-#pragma omp parallel private(pid, bsize, k1, k2, stride, work_mem, count)
-	{
-	pid = omp_get_thread_num();
-	// my block
+    int i;
+    int number_of_centers_to_close = 0;
 
-	bsize = points->num / nproc;
-	k1 = bsize * pid;
-	k2 = k1 + bsize;
-	if (pid == nproc - 1)
-		k2 = points->num;
+    static double *work_mem;
+    static double gl_cost_of_opening_x;
+    static int gl_number_of_centers_to_close;
 
-	int i;
-	int number_of_centers_to_close = 0;
+    int stride = *numcenters + 2;
+    //make stride a multiple of CACHE_LINE
+    int cl = CACHE_LINE/sizeof ( double );
+    if ( stride % cl != 0 ) {
+        stride = cl * ( stride / cl + 1 );
+    }
+    int K = stride - 2 ; // K==*numcenters
 
-	
-	static int gl_number_of_centers_to_close;
+    //my own cost of opening x
+    double cost_of_opening_x = 0;
+    work_mem = ( double* ) malloc ( 2 * stride * sizeof ( double ) );
+    gl_cost_of_opening_x = 0;
+    gl_number_of_centers_to_close = 0;
 
-	// each thread takes a block of working_mem.
-	 stride = *numcenters + 2;
-	// make stride a multiple of CACHE_LINE
-	int cl = CACHE_LINE / sizeof(double);
-	if (stride % cl != 0)
-	{
-		stride = cl * (stride / cl + 1);
-	}
-	int K = stride - 2; // K==*numcenters
+    int count = 0;
+    //my *lower* fields
+    double* lower;
+    //global *lower* fields
+    double* gl_lower;
 
-	// my own cost of opening x
-	double cost_of_opening_x = 0;
+    #pragma omp parallel
+    {
+        /*
+         * For each center, we have a *lower* field that indicates
+         * how much we will save by closing the center.
+         */
 
-	work_mem = (double *)malloc(stride * (nproc + 1) * sizeof(double));
-	gl_cost_of_opening_x = 0;
-	gl_number_of_centers_to_close = 0;
+        int i;
+        #pragma omp for private(i)
+        for ( i = 0; i < points->num; i++ ) {
+            if ( is_center[i] ) {
+                #pragma omp critical
+                center_table[i] = count++;
+            }
+        }
 
-#pragma omp barrier
+        #pragma omp single
+        work_mem[0] = 0;
 
-	/*For each center, we have a *lower* field that indicates
-	how much we will save by closing the center.
-	Each thread has its own copy of the *lower* fields as an array.
-	We first build a table to index the positions of the *lower* fields.
-  */
+        #pragma omp sections
+        {
+            //now we finish building the table. clear the working memory.
+            #pragma omp section
+            memset ( switch_membership, 0, points->num * sizeof ( bool ) );
 
-#pragma omp for private(i)
-		for (i = k1; i < k2; i++)
-		{
-			if (is_center[i])
-			{
-#pragma omp critical
-				center_table[i] = count++;
-			}
-		}
-		work_mem[pid * stride] = count;
+            #pragma omp section
+            memset ( work_mem, 0, stride*sizeof ( double ) );
 
-#pragma omp barrier
+            #pragma omp section
+            memset ( work_mem+stride,0,stride*sizeof ( double ) );
+        }
 
-		if (pid == 0)
-		{
-			int accum = 0;
-			int p;
-#pragma omp for private(p)
-			for (p = 0; p < nproc; p++)
-			{
-				int tmp = (int)work_mem[p * stride];
-				work_mem[p * stride] = accum;
-// #pragma omp atomic
-				accum += tmp;
-			}
-		}
+        #pragma omp single
+        {
+            lower = &work_mem[0];
+            gl_lower = &work_mem[stride];
+        }
 
-#pragma omp barrier
+        float x_cost, current_cost;
 
-#pragma omp for private(i, pid, stride)
-		for (int i = k1; i < k2; i++)
-		{
-			if (is_center[i])
-			{
-#pragma omp critical
-				center_table[i] += (int)work_mem[pid * stride];
-			}
-		}
+        #pragma omp for private(i, x_cost, current_cost)
+        for ( i = 0; i < points->num; i++ ) {
 
-// now we finish building the table. clear the working memory.
-//#pragma omp sections
-// 		{
-//  #pragma omp section
-			memset(switch_membership + k1, 0, (k2 - k1) * sizeof(bool));
+            x_cost = dist ( points->p[i], points->p[x], points->dim ) * points->p[i].weight;
+            current_cost = points->p[i].cost;
 
-// #pragma omp section
-			memset(work_mem + pid * stride, 0, stride * sizeof(double));
-		//}
-		if (pid == 0)
-			memset(work_mem + nproc * stride, 0, stride * sizeof(double));
+            if ( x_cost < current_cost ) {
 
-#pragma omp barrier
+                // point i would save cost just by switching to x
+                // (note that i cannot be a median,
+                // or else dist(p[i], p[x]) would be 0)
 
-		// my *lower* fields
-		double *lower = &work_mem[pid * stride];
-		// global *lower* fields
-		double *gl_lower = &work_mem[nproc * stride];
+                switch_membership[i] = 1;
 
-		float x_cost;
-		float current_cost;
-#pragma omp for private(i, x_cost, current_cost)
-		for (i = k1; i < k2; i++)
-		{
-			x_cost = dist(points->p[i], points->p[x], points->dim) * points->p[i].weight;
-			current_cost = points->p[i].cost;
+                #pragma omp critical
+                cost_of_opening_x += x_cost - current_cost;
 
-			if (x_cost < current_cost)
-			{
-				// point i would save cost just by switching to x
-				// (note that i cannot be a median,
-				// or else dist(p[i], p[x]) would be 0)
+            } else {
 
-				switch_membership[i] = 1;
-#pragma omp critical
-				cost_of_opening_x += x_cost - current_cost;
-			}
-			else
-			{
-				// cost of assigning i to x is at least current assignment cost of i
+                // cost of assigning i to x is at least current assignment cost of i
 
-				// consider the savings that i's **current** median would realize
-				// if we reassigned that median and all its members to x;
-				// note we've already accounted for the fact that the median
-				// would save z by closing; now we have to subtract from the savings
-				// the extra cost of reassigning that median and its members
-				#pragma omp critical 
-				int assign = points->p[i].assign;
-				
-				#pragma omp critical 
-				lower[center_table[assign]] += current_cost - x_cost;
-				
-			}
-		}
+                // consider the savings that i's **current** median would realize
+                // if we reassigned that median and all its members to x;
+                // note we've already accounted for the fact that the median
+                // would save z by closing; now we have to subtract from the savings
+                // the extra cost of reassigning that median and its members
+                int assign = points->p[i].assign;
 
-#pragma omp barrier
+                #pragma omp critical
+                lower[center_table[assign]] += current_cost - x_cost;
+            }
+        }
 
-		// at this time, we can calculate the cost of opening a center
-		// at x; if it is negative, we'll go through with opening it
-		double low;
-#pragma omp for private(i, low)
-		for (int i = k1; i < k2; i++)
-		{
-			if (is_center[i])
-			{
-				low = z;
-				// aggregate from all threads
-				int p;
-				for (p = 0; p < nproc; p++)
-				{
-					low += work_mem[center_table[i] + p * stride];
-				}
-#pragma omp critical
-				gl_lower[center_table[i]] = low;
-				if (low > 0)
-				{
-// i is a median, and
-// if we were to open x (which we still may not) we'd close i
+        // at this time, we can calculate the cost of opening a center
+        // at x; if it is negative, we'll go through with opening it
 
-// note, we'll ignore the following quantity unless we do open x
-// #pragma omp atomic
-					++number_of_centers_to_close;
-#pragma omp critical
-					cost_of_opening_x -= low;
-				}
-			}
-		}
+        double low;
 
-		work_mem[pid * stride + K] = number_of_centers_to_close;
-		work_mem[pid * stride + K + 1] = cost_of_opening_x;
+        #pragma omp for private(i, low)
+        for ( int i = 0; i < points->num; i++ ) {
+            if ( is_center[i] ) {
+                low = z + work_mem[center_table[i]];
+                #pragma omp critical
+                gl_lower[center_table[i]] = low;
+                if ( low > 0 ) {
+                    // i is a median, and
+                    // if we were to open x (which we still may not) we'd close i
 
-#pragma omp barrier
-		//  printf("thread %d cost complete\n",pid);
-		if (pid == 0)
-		{
-			gl_cost_of_opening_x = z;
-			// aggregate
-			int p;
-#pragma omp for private(p)
-			for (p = 0; p < nproc; p++)
-			{
-				gl_number_of_centers_to_close += (int)work_mem[p * stride + K];
-				gl_cost_of_opening_x += work_mem[p * stride + K + 1];
-			}
-		}
+                    // note, we'll ignore the following quantity unless we do open x
+                    #pragma omp atomic
+                    ++number_of_centers_to_close;
+                    #pragma omp critical
+                    cost_of_opening_x -= low;
+                }
+            }
+        }
 
-#pragma omp barrier
-		// Now, check whether opening x would save cost; if so, do it, and
-		// otherwise do nothing
+        #pragma omp sections
+        {
+            //use the rest of working memory to store the following
+            #pragma omp section
+            work_mem[K] = number_of_centers_to_close;
 
-		if (gl_cost_of_opening_x < 0)
-		{
-			//  we'd save money by opening x; we'll do it
-			bool close_center;
-#pragma omp for private(i, close_center)
-			for (int i = k1; i < k2; i++)
-			{
-				close_center = gl_lower[center_table[points->p[i].assign]] > 0;
-				if (switch_membership[i] || close_center)
-				{
-					// Either i's median (which may be i itself) is closing,
-					// or i is closer to x than to its current median
-					points->p[i].cost = points->p[i].weight *
-										dist(points->p[i], points->p[x], points->dim);
-					points->p[i].assign = x;
-				}
-			}
-#pragma omp for private(i)
-			for (i = k1; i < k2; i++)
-			{
-				if (is_center[i] && gl_lower[center_table[i]] > 0)
-				{
-					is_center[i] = false;
-				}
-			}
-			if (x >= k1 && x < k2)
-			{
-				is_center[x] = true;
-			}
+            #pragma omp section
+            work_mem[K+1] = cost_of_opening_x;
 
-			if (pid == 0)
-			{
-				*numcenters = *numcenters + 1 - gl_number_of_centers_to_close;
-			}
-		}
-		else
-		{
-			if (pid == 0)
-				gl_cost_of_opening_x = 0; // the value we'll return
-		}
-#pragma omp barrier
+            #pragma omp section
+            gl_number_of_centers_to_close = ( int ) work_mem[K];
 
-		if (pid == 0)
-		{
-			free(work_mem);
-			//    free(is_center);
-			//    free(switch_membership);
-			//    free(proc_cost_of_opening_x);
-			//    free(proc_number_of_centers_to_close);
-		}
+            #pragma omp section
+            gl_cost_of_opening_x = z + work_mem[K+1];
+        }
 
-	} // parallel
-	return -gl_cost_of_opening_x;
+        // Now, check whether opening x would save cost; if so, do it, and
+        // otherwise do nothing
+        bool close_center;
+
+        if ( gl_cost_of_opening_x < 0 ) {
+            //  we'd save money by opening x; we'll do it
+            #pragma omp for private(i)
+            for ( i = 0; i < points->num; i++ ) {
+                close_center = gl_lower[center_table[points->p[i].assign]] > 0 ;
+                if ( switch_membership[i] || close_center ) {
+                    // Either i's median (which may be i itself) is closing,
+                    // or i is closer to x than to its current median
+                    points->p[i].cost = points->p[i].weight * dist ( points->p[i], points->p[x], points->dim );
+                    points->p[i].assign = x;
+                }
+            }
+            #pragma omp for private(i)
+            for ( i = 0; i < points->num; i++ ) {
+                if ( is_center[i] && gl_lower[center_table[i]] > 0 ) {
+                    is_center[i] = false;
+                }
+            }
+            if ( x >= 0 && x < points->num ) {
+                is_center[x] = true;
+            }
+
+            #pragma omp single
+            *numcenters = *numcenters + 1 - gl_number_of_centers_to_close;
+        } else {
+            #pragma omp single
+            gl_cost_of_opening_x = 0;  // the value we'll return
+        }
+
+        #pragma omp single
+        free ( work_mem );
+    }
+
+    return -gl_cost_of_opening_x;
 }
-
 float pFL(Points *points, int *feasible, int numfeasible,
 		  float z, long *k, double cost, long iter, float e)
 {
