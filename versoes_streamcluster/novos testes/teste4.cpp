@@ -1,9 +1,5 @@
 /*
- * Copyright (C) 2008 Princeton University
- * All rights reserved.
- * Authors: Jia Deng, Gilberto Contreras
- *
- * streamcluster - Online clustering algorithm
+ERRO DE SEGMENTAÇÃO
  *
  */
 #include <stdio.h>

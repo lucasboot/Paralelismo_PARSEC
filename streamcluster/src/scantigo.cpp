@@ -1,4 +1,3 @@
-// DEU ERRADO - TESTANDO REDUZIR O OVERHEAD DA PGAIN
 #include <assert.h>
 #include <limits.h>
 #include <math.h>
@@ -172,7 +171,6 @@ float pspeedy(Points *points, float z, long *kcenter)
 
     return (totalcost);
 }
-
 double pgain(long x, Points *points, double z, long int *numcenters)
 {
     int i;
@@ -193,48 +191,40 @@ double pgain(long x, Points *points, double z, long int *numcenters)
 
     // my own cost of opening x
     double cost_of_opening_x = 0;
+
     work_mem = (double *)malloc(2 * stride * sizeof(double));
     gl_cost_of_opening_x = 0;
     gl_number_of_centers_to_close = 0;
-
-    int count = 0;
-    // my *lower* fields
-    double *lower;
-    // global *lower* fields
-    double *gl_lower;
 
     /*
      * For each center, we have a *lower* field that indicates
      * how much we will save by closing the center.
      */
-
-    int i;
-    for (i = 0; i < points->num; i++)
+    int count = 0;
+    for (int i = 0; i < points->num; i++)
     {
         if (is_center[i])
         {
-#pragma omp critical
             center_table[i] = count++;
         }
     }
-
     work_mem[0] = 0;
 
     // now we finish building the table. clear the working memory.
-
     memset(switch_membership, 0, points->num * sizeof(bool));
-
     memset(work_mem, 0, stride * sizeof(double));
-
     memset(work_mem + stride, 0, stride * sizeof(double));
 
-    lower = &work_mem[0];
-    gl_lower = &work_mem[stride];
+    // my *lower* fields
+    double *lower = &work_mem[0];
+    // global *lower* fields
+    double *gl_lower = &work_mem[stride];
+    float x_cost = 0.0;
+    float current_cost = 0.0;
 
-    float x_cost, current_cost;
+#pragma omp parallel for private(current_cost, x_cost) shared(cost_of_opening_x)
 
-#pragma omp parallel for private(i, x_cost, current_cost) shared(cost_of_opening_x, lower)
-    for (i = 0; i < points->num; i++)
+        for (i = 0; i < points->num; i++)
     {
 
         x_cost = dist(points->p[i], points->p[x], points->dim) * points->p[i].weight;
@@ -243,14 +233,16 @@ double pgain(long x, Points *points, double z, long int *numcenters)
         if (x_cost < current_cost)
         {
 
-            // point i would save cost just by switching to x
+            // point i would save cost just by switching to             // x
             // (note that i cannot be a median,
             // or else dist(p[i], p[x]) would be 0)
 
             switch_membership[i] = 1;
 
-#pragma omp critical
             cost_of_opening_x += x_cost - current_cost;
+            {
+#pragma omp flush(cost_of_opening_x)
+            }
         }
         else
         {
@@ -264,68 +256,63 @@ double pgain(long x, Points *points, double z, long int *numcenters)
             // the extra cost of reassigning that median and its members
             int assign = points->p[i].assign;
 
-#pragma omp critical
             lower[center_table[assign]] += current_cost - x_cost;
+            {
+#pragma omp flush(lower)
+            }
+        }
+//#pragma omp barrier
+        {
+#pragma omp flush(lower, cost_of_opening_x)
         }
     }
 
     // at this time, we can calculate the cost of opening a center
     // at x; if it is negative, we'll go through with opening it
-
-    double low;
-
-#pragma omp parallel for private(i, low)
     for (int i = 0; i < points->num; i++)
     {
         if (is_center[i])
         {
-            low = z + work_mem[center_table[i]];
-#pragma omp critical
+            double low = z + work_mem[center_table[i]];
             gl_lower[center_table[i]] = low;
             if (low > 0)
             {
-// i is a median, and
-// if we were to open x (which we still may not) we'd close i
+                // i is a median, and
+                // if we were to open x (which we still may not) we'd close i
 
-// note, we'll ignore the following quantity unless we do open x
-#pragma omp atomic
+                // note, we'll ignore the following quantity unless we do open x
                 ++number_of_centers_to_close;
-#pragma omp critical
                 cost_of_opening_x -= low;
             }
         }
     }
-
     // use the rest of working memory to store the following
     work_mem[K] = number_of_centers_to_close;
-
     work_mem[K + 1] = cost_of_opening_x;
 
     gl_number_of_centers_to_close = (int)work_mem[K];
-
     gl_cost_of_opening_x = z + work_mem[K + 1];
 
     // Now, check whether opening x would save cost; if so, do it, and
     // otherwise do nothing
-    bool close_center;
 
     if (gl_cost_of_opening_x < 0)
     {
 //  we'd save money by opening x; we'll do it
-#pragma omp parallel for private(i) shared(x)
-        for (i = 0; i < points->num; i++)
+#pragma omp parallel for
+        for (int i = 0; i < points->num; i++)
         {
-            close_center = gl_lower[center_table[points->p[i].assign]] > 0;
+            bool close_center = gl_lower[center_table[points->p[i].assign]] > 0;
             if (switch_membership[i] || close_center)
             {
                 // Either i's median (which may be i itself) is closing,
                 // or i is closer to x than to its current median
-                points->p[i].cost = points->p[i].weight * dist(points->p[i], points->p[x], points->dim);
+                points->p[i].cost = points->p[i].weight * dist(points->p[i],
+                                                               points->p[x], points->dim);
                 points->p[i].assign = x;
             }
         }
-#pragma omp parallel for private(i)
-        for (i = 0; i < points->num; i++)
+        for (int i = 0; i < points->num; i++)
         {
             if (is_center[i] && gl_lower[center_table[i]] > 0)
             {
@@ -336,6 +323,7 @@ double pgain(long x, Points *points, double z, long int *numcenters)
         {
             is_center[x] = true;
         }
+
         *numcenters = *numcenters + 1 - gl_number_of_centers_to_close;
     }
     else
@@ -347,6 +335,7 @@ double pgain(long x, Points *points, double z, long int *numcenters)
 
     return -gl_cost_of_opening_x;
 }
+
 float pFL(Points *points, int *feasible, int numfeasible,
           float z, long *k, double cost, long iter, float e)
 {
@@ -363,7 +352,7 @@ float pFL(Points *points, int *feasible, int numfeasible,
         numberOfPoints = points->num;
         /* randomize order in which centers are considered */
         intshuffle(feasible, numfeasible);
-#pragma omp parallel for private(i, x) shared(change)
+
         for (i = 0; i < iter; i++)
         {
             x = i % numfeasible;

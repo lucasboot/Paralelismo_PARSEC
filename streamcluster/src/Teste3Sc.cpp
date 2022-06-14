@@ -1,4 +1,4 @@
-/* DEU CERTO
+/*
  * Copyright (C) 2008 Princeton University
  * All rights reserved.
  * Authors: Jia Deng, Gilberto Contreras
