@@ -31,11 +31,13 @@ pascalanalyzer -c 1:4 -i "10 20 128 1000000 200000 5000 none output.txt __nt__" 
 #### Open mp
 
 g++ -pg -O3 -g -funroll-loops -Wall -fopenmp -fprefetch-loop-arrays -fpermissive -fno-exceptions -static-libgcc -Wl,--hash-style=both,--as-needed -DPARSEC_VERSION=3.0-beta-20150206 -c streamcluster.cpp
+
 g++ -pg -O3 -g -funroll-loops -Wall -fopenmp -fprefetch-loop-arrays -fpermissive -fno-exceptions -static-libgcc -Wl,--hash-style=both,--as-needed -DPARSEC_VERSION=3.0-beta-20150206 -L/usr/lib64 -L/usr/lib streamcluster.o -o streamcluster
 
 #### Serial
 
 g++ -pg -O3 -g -funroll-loops -fprefetch-loop-arrays -fpermissive -fno-exceptions -static-libgcc -Wl,--hash-style=both,--as-needed -DPARSEC_VERSION=3.0-beta-20150206 -c streamcluster.cpp
+
 g++ -pg -O3 -g -funroll-loops -fprefetch-loop-arrays -fpermissive -fno-exceptions -static-libgcc -Wl,--hash-style=both,--as-needed -DPARSEC_VERSION=3.0-beta-20150206 -L/usr/lib64 -L/usr/lib streamcluster.o -o streamcluster
 
 #### Pthreads - OMP
