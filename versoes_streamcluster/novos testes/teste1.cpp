@@ -1,4 +1,4 @@
-//TESTANDO A PARALELIZAÇÃO DA CHAMADA PGAIN
+//ERRO DE SEGMENTAÇÃO - TESTANDO A PARALELIZAÇÃO DA CHAMADA PGAIN
 #include <assert.h>
 #include <limits.h>
 #include <math.h>

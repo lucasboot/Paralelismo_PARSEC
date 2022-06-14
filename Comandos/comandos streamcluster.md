@@ -10,7 +10,7 @@ g++ -pg -O3 -g -funroll-loops -fprefetch-loop-arrays -fpermissive -fno-exception
 parsecmgmt -a run -p streamcluster -i native
 
 #### Geral
-./streamcluster 10 20 128 1000000 200000 5000 none output.txt 1
+./streamcluster 10 20 128 1000000 200000 5000 none output.txt 4
 ./streamcluster 2 5 1 10 10 5 none output.txt 2 
 
 gprof streamcluster gmon.out
@@ -26,7 +26,7 @@ xdot out.dot
 
 pascalanalyzer ./streamcluster -c 1:4 -i input.txt -o main.json
 
-pascalanalyzer -c 1:8 -i "10 20 128 1000000 200000 5000 none output.txt _nt_" ./streamcluster -o main.json
+pascalanalyzer -c 1:4 -i "10 20 128 1000000 200000 5000 none output.txt __nt__" ./streamcluster -o main.json
 
 #### Open mp
 
