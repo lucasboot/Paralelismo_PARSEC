@@ -261,7 +261,7 @@ double pgain(long x, Points *points, double z, long int *numcenters)
 #pragma omp flush(lower)
 			}
 		}
-#pragma omp barrier
+//#pragma omp barrier
 		{
 #pragma omp flush(lower, cost_of_opening_x)
 		}
