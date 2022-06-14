@@ -37,3 +37,10 @@ g++ -pg -O3 -g -funroll-loops -Wall -fopenmp -fprefetch-loop-arrays -fpermissive
 
 g++ -pg -O3 -g -funroll-loops -fprefetch-loop-arrays -fpermissive -fno-exceptions -static-libgcc -Wl,--hash-style=both,--as-needed -DPARSEC_VERSION=3.0-beta-20150206 -c streamcluster.cpp
 g++ -pg -O3 -g -funroll-loops -fprefetch-loop-arrays -fpermissive -fno-exceptions -static-libgcc -Wl,--hash-style=both,--as-needed -DPARSEC_VERSION=3.0-beta-20150206 -L/usr/lib64 -L/usr/lib streamcluster.o -o streamcluster
+
+#### Pthreads - OMP
+g++ -pg -O3 -g -funroll-loops -Wall -fopenmp -fprefetch-loop-arrays -fpermissive -fno-exceptions -static-libgcc -Wl,--hash-style=both,--as-needed -DPARSEC_VERSION=3.0-beta-20150206 -DENABLE_THREADS -pthread -c streamcluster.cpp
+
+g++ -pg -O3 -g -funroll-loops -Wall -fopenmp -fprefetch-loop-arrays -fpermissive -fno-exceptions -static-libgcc -Wl,--hash-style=both,--as-needed -DPARSEC_VERSION=3.0-beta-20150206 -DENABLE_THREADS -pthread -c parsec_barrier.cpp
+
+g++ -pg -O3 -g -funroll-loops -Wall -fopenmp -fprefetch-loop-arrays -fpermissive -fno-exceptions -static-libgcc -Wl,--hash-style=both,--as-needed -DPARSEC_VERSION=3.0-beta-20150206 -DENABLE_THREADS -pthread -L/usr/lib64 -L/usr/lib streamcluster.o parsec_barrier.o  -o streamcluster
