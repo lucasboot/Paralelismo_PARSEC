@@ -221,8 +221,7 @@ double pgain(long x, Points *points, double z, long int *numcenters)
 	float x_cost = 0.0;
 	float current_cost = 0.0;
 
-#pragma omp parallel for private(current_cost, x_cost)
-	shared(cost_of_opening_x)
+#pragma omp parallel for private(current_cost, x_cost) shared(cost_of_opening_x)
 
 		for (i = 0; i < points->num; i++)
 	{
