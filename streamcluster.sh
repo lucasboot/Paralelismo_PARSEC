@@ -7,4 +7,8 @@
 #SBATCH --exclusive
 export OMP_NUM_THREADS=32
 
-pascalanalyzer -c 1:32 -i "10 20 128 1000000 200000 5000 none output_nartive.txt __nt__","10 20 128 16384 16384 1000 none output_large.txt __nt__"," 2 5 1 10 10 5 none output_test.txt __nt__" ./streamcluster -o main_noexclusive.json
+pascalanalyzer -c 1:32 -i "10 20 128 1000000 200000 5000 none output_nartive.txt __nt__","10 20 128 16384 16384 1000 none output_large.txt __nt__"," 2 5 1 10 10 5 none output_test.txt __nt__" ./streamcluster -o main.json
+
+
+
+

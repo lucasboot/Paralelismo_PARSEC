@@ -225,17 +225,11 @@ double pgain(long x, Points *points, double z, long int *numcenters)
 
 		for (i = 0; i < points->num; i++)
 	{
-
 		x_cost = dist(points->p[i], points->p[x], points->dim) * points->p[i].weight;
 		current_cost = points->p[i].cost;
 
 		if (x_cost < current_cost)
 		{
-
-			// point i would save cost just by switching to             // x
-			// (note that i cannot be a median,
-			// or else dist(p[i], p[x]) would be 0)
-
 			switch_membership[i] = 1;
 
 			cost_of_opening_x += x_cost - current_cost;
@@ -245,14 +239,6 @@ double pgain(long x, Points *points, double z, long int *numcenters)
 		}
 		else
 		{
-
-			// cost of assigning i to x is at least current assignment cost of i
-
-			// consider the savings that i's **current** median would realize
-			// if we reassigned that median and all its members to x;
-			// note we've already accounted for the fact that the median
-			// would save z by closing; now we have to subtract from the savings
-			// the extra cost of reassigning that median and its members
 			int assign = points->p[i].assign;
 
 			lower[center_table[assign]] += current_cost - x_cost;
@@ -260,7 +246,6 @@ double pgain(long x, Points *points, double z, long int *numcenters)
 #pragma omp flush(lower)
 			}
 		}
-//#pragma omp barrier
 		{
 #pragma omp flush(lower, cost_of_opening_x)
 		}
