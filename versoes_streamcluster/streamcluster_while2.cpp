@@ -216,7 +216,6 @@ float pspeedy(Points *points, float z, long *kcenter, int pid) {
 #endif
 
     /* create center at first point, send it to itself */
-    #pragma omp parallel for
     for (int k = k1; k < k2; k++) {
         float distance = dist(points->p[k], points->p[0], points->dim);
         points->p[k].cost = distance * points->p[k].weight;
@@ -313,7 +312,6 @@ float pspeedy(Points *points, float z, long *kcenter, int pid) {
    points */
 
 double pgain(long x, Points *points, double z, long int *numcenters, int pid) {
-//  printf("pgain pthread %d begin\n",pid);
 
 #ifdef PROFILE
     double t0 = gettime();
@@ -444,7 +442,6 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid) {
     // at this time, we can calculate the cost of opening a center
     // at x; if it is negative, we'll go through with opening it
 
-#pragma omp parallel for shared(number_of_centers_to_close, cost_of_opening_x)
     for (int i = k1; i < k2; i++) {
         if (is_center[i]) {
             double low = z;
@@ -490,9 +487,8 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid) {
 
     if (gl_cost_of_opening_x < 0) {
 //  we'd save money by opening x; we'll do it
-#pragma omp parallel 
-{
-#pragma omp for
+
+#pragma omp parallel for
         for (int i = k1; i < k2; i++) {
             bool close_center = gl_lower[center_table[points->p[i].assign]] > 0;
             if (switch_membership[i] || close_center) {
@@ -504,7 +500,6 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid) {
                 points->p[i].assign = x;
             }
         }
-#pragma omp for
         for (int i = k1; i < k2; i++) {
             if (is_center[i] && gl_lower[center_table[i]] > 0) {
                 is_center[i] = false;
@@ -512,7 +507,7 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid) {
                 is_center[i] = is_center[i];
             }
         }
-}
+
         if (x >= k1 && x < k2) {
             is_center[x] = true;
         }
@@ -1048,7 +1043,7 @@ void streamCluster(PStream *stream, long kmin, long kmax, int dim,
     while (1) {
 
         size_t numRead = stream->read(block, dim, chunksize);
-        fprintf(stderr, "read %d points\n", numRead);
+        //fprintf(stderr, "read %d points\n", numRead);
 
         if (stream->ferror() ||
             numRead < (unsigned int)chunksize && !stream->feof()) {
@@ -1067,7 +1062,7 @@ void streamCluster(PStream *stream, long kmin, long kmax, int dim,
 
         localSearch(&points, kmin, kmax, &kfinal);
 
-        fprintf(stderr, "finish local search\n");
+        //fprintf(stderr, "finish local search\n");
         contcenters(&points);
         if (kfinal + centers.num > centersize) {
             // here we don't handle the situation where # of centers gets too
@@ -1171,7 +1166,7 @@ int main(int argc, char **argv) {
         stream = new FileStream(infilename);
     }
 
-    double t1 = gettime();
+    //double t1 = gettime();
 
 #ifdef ENABLE_PARSEC_HOOKS
     __parsec_roi_begin();
@@ -1181,12 +1176,12 @@ int main(int argc, char **argv) {
     __parsec_roi_end();
 #endif
 
-    double t2 = gettime();
+    //double t2 = gettime();
 
-    printf("time = %lf\n", t2 - t1);
+    //printf("time = %lf\n", t2 - t1);
 
     delete stream;
-
+    /*
     printf("time pgain = %lf\n", time_gain);
     printf("time pgain_dist = %lf\n", time_gain_dist);
     printf("time pgain_init = %lf\n", time_gain_init);
@@ -1194,7 +1189,7 @@ int main(int argc, char **argv) {
     printf("time pspeedy = %lf\n", time_speedy);
     printf("time pshuffle = %lf\n", time_shuffle);
     printf("time localSearch = %lf\n", time_local_search);
-    printf("loops=%d\n", d);
+    printf("loops=%d\n", d);*/
 #ifdef ENABLE_PARSEC_HOOKS
     __parsec_bench_end();
 #endif
